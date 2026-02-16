@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FlashMaster — Flash Card App</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<div id="app">
+  <!-- ========== SIDEBAR ========== -->
+  <aside class="sidebar" :class="{ collapsed: sidebarCollapsed }">
+    <div class="sidebar-header">
+      <h1 class="logo" v-show="!sidebarCollapsed"><i class="fas fa-bolt"></i> FlashMaster</h1>
+      <button class="btn-icon" @click="sidebarCollapsed = !sidebarCollapsed" title="Toggle sidebar">
+        <i :class="sidebarCollapsed ? 'fas fa-angles-right' : 'fas fa-angles-left'"></i>
+      </button>
+    </div>
+
+    <nav class="sidebar-nav" v-show="!sidebarCollapsed">
+      <button class="nav-btn" :class="{ active: view === 'decks' }" @click="view = 'decks'">
+        <i class="fas fa-layer-group"></i> My Decks
+      </button>
+      <button class="nav-btn" :class="{ active: view === 'study' }" @click="startStudyMode" :disabled="allCards.length === 0">
+        <i class="fas fa-graduation-cap"></i> Study Mode
+      </button>
+      <button class="nav-btn" :class="{ active: view === 'stats' }" @click="view = 'stats'">
+        <i class="fas fa-chart-bar"></i> Statistics
+      </button>
+    </nav>
+
+    <div class="sidebar-footer" v-show="!sidebarCollapsed">
+      <button class="btn btn-primary btn-block" @click="openNewDeckModal">
+        <i class="fas fa-plus"></i> New Deck
+      </button>
+    </div>
+  </aside>
+
+  <!-- ========== MAIN CONTENT ========== -->
+  <main class="main-content">
+
+    <!-- DECKS VIEW -->
+    <section v-if="view === 'decks'" class="view-decks">
+      <header class="view-header">
+        <h2><i class="fas fa-layer-group"></i> My Decks</h2>
+        <div class="header-actions">
+          <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" v-model="searchQuery" placeholder="Search cards..." />
+          </div>
+        </div>
+      </header>
+
+      <!-- Deck grid -->
+      <div class="deck-grid" v-if="decks.length > 0">
+        <div class="deck-card" v-for="deck in filteredDecks" :key="deck.id"
+             :style="{ borderTop: '4px solid ' + deck.color }" @click="selectDeck(deck)">
+          <div class="deck-card-header">
+            <span class="deck-emoji">{{ deck.emoji }}</span>
+            <div class="deck-actions">
+              <button class="btn-icon-sm" @click.stop="editDeck(deck)" title="Edit deck">
+                <i class="fas fa-pen"></i>
+              </button>
+              <button class="btn-icon-sm danger" @click.stop="deleteDeck(deck.id)" title="Delete deck">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </div>
+          <h3>{{ deck.name }}</h3>
+          <p class="deck-count">{{ getCardCount(deck.id) }} cards</p>
+          <div class="deck-progress">
+            <div class="progress-bar">
+              <div class="progress-fill" :style="{ width: getDeckMastery(deck.id) + '%', background: deck.color }"></div>
+            </div>
+            <span class="progress-text">{{ getDeckMastery(deck.id) }}% mastered</span>
+          </div>
+        </div>
+
+        <!-- Add deck card -->
+        <div class="deck-card deck-card-add" @click="openNewDeckModal">
+          <i class="fas fa-plus"></i>
+          <span>Add New Deck</span>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div class="empty-state" v-else>
+        <i class="fas fa-layer-group"></i>
+        <h3>No Decks Yet</h3>
+        <p>Create your first deck to start learning!</p>
+        <button class="btn btn-primary" @click="openNewDeckModal">
+          <i class="fas fa-plus"></i> Create Deck
+        </button>
+      </div>
+
+      <!-- Selected Deck Panel -->
+      <section v-if="selectedDeck" class="deck-detail">
+        <div class="deck-detail-header">
+          <button class="btn-icon" @click="selectedDeck = null"><i class="fas fa-arrow-left"></i></button>
+          <h2>{{ selectedDeck.emoji }} {{ selectedDeck.name }}</h2>
+          <div class="header-actions">
+            <button class="btn btn-primary" @click="openNewCardModal">
+              <i class="fas fa-plus"></i> Add Card
+            </button>
+            <button class="btn btn-secondary" @click="studyDeck(selectedDeck)" :disabled="getDeckCards(selectedDeck.id).length === 0">
+              <i class="fas fa-play"></i> Study
+            </button>
+          </div>
+        </div>
+
+        <div class="cards-list" v-if="getDeckCards(selectedDeck.id).length > 0">
+          <div class="card-item" v-for="card in getDeckCards(selectedDeck.id)" :key="card.id">
+            <div class="card-item-content">
+              <div class="card-front-preview">
+                <span class="label">Q</span>
+                <span>{{ card.front }}</span>
+              </div>
+              <div class="card-back-preview">
+                <span class="label">A</span>
+                <span>{{ card.back }}</span>
+              </div>
+            </div>
+            <div class="card-item-actions">
+              <span class="card-difficulty" :class="card.difficulty">{{ card.difficulty || 'new' }}</span>
+              <button class="btn-icon-sm" @click="editCard(card)" title="Edit card">
+                <i class="fas fa-pen"></i>
+              </button>
+              <button class="btn-icon-sm danger" @click="deleteCard(card.id)" title="Delete card">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="empty-state small" v-else>
+          <i class="fas fa-cards-blank"></i>
+          <p>No cards in this deck yet.</p>
+          <button class="btn btn-primary" @click="openNewCardModal">
+            <i class="fas fa-plus"></i> Add Card
+          </button>
+        </div>
+      </section>
+    </section>
+
+    <!-- STUDY VIEW -->
+    <section v-if="view === 'study'" class="view-study">
+      <header class="study-header">
+        <button class="btn btn-secondary" @click="exitStudy"><i class="fas fa-arrow-left"></i> Exit</button>
+        <div class="study-progress-info">
+          <span>{{ studyIndex + 1 }} / {{ studyCards.length }}</span>
+          <div class="progress-bar study-progress-bar">
+            <div class="progress-fill" :style="{ width: studyProgressPercent + '%' }"></div>
+          </div>
+        </div>
+        <div class="study-score">
+          <span class="score-correct"><i class="fas fa-check"></i> {{ studyCorrect }}</span>
+          <span class="score-wrong"><i class="fas fa-xmark"></i> {{ studyWrong }}</span>
+        </div>
+      </header>
+
+      <div class="study-area" v-if="studyCards.length > 0 && studyIndex < studyCards.length">
+        <div class="flashcard-container" @click="flipCard">
+          <div class="flashcard" :class="{ flipped: isFlipped }">
+            <div class="flashcard-face flashcard-front">
+              <span class="card-label">Question</span>
+              <p>{{ studyCards[studyIndex].front }}</p>
+              <span class="flip-hint"><i class="fas fa-rotate"></i> Click to flip</span>
+            </div>
+            <div class="flashcard-face flashcard-back">
+              <span class="card-label">Answer</span>
+              <p>{{ studyCards[studyIndex].back }}</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="study-actions" v-show="isFlipped">
+          <button class="btn btn-danger" @click="rateCard('hard')">
+            <i class="fas fa-xmark"></i> Hard
+          </button>
+          <button class="btn btn-warning" @click="rateCard('medium')">
+            <i class="fas fa-minus"></i> Medium
+          </button>
+          <button class="btn btn-success" @click="rateCard('easy')">
+            <i class="fas fa-check"></i> Easy
+          </button>
+        </div>
+      </div>
+
+      <!-- Study Complete -->
+      <div class="study-complete" v-if="studyIndex >= studyCards.length && studyCards.length > 0">
+        <div class="complete-card">
+          <i class="fas fa-trophy"></i>
+          <h2>Session Complete!</h2>
+          <div class="complete-stats">
+            <div class="stat">
+              <span class="stat-number">{{ studyCards.length }}</span>
+              <span class="stat-label">Cards Reviewed</span>
+            </div>
+            <div class="stat">
+              <span class="stat-number correct">{{ studyCorrect }}</span>
+              <span class="stat-label">Easy / Medium</span>
+            </div>
+            <div class="stat">
+              <span class="stat-number wrong">{{ studyWrong }}</span>
+              <span class="stat-label">Hard</span>
+            </div>
+            <div class="stat">
+              <span class="stat-number">{{ studyAccuracy }}%</span>
+              <span class="stat-label">Accuracy</span>
+            </div>
+          </div>
+          <div class="complete-actions">
+            <button class="btn btn-primary" @click="restartStudy"><i class="fas fa-redo"></i> Study Again</button>
+            <button class="btn btn-secondary" @click="exitStudy"><i class="fas fa-home"></i> Back to Decks</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STATS VIEW -->
+    <section v-if="view === 'stats'" class="view-stats">
+      <header class="view-header">
+        <h2><i class="fas fa-chart-bar"></i> Statistics</h2>
+      </header>
+
+      <div class="stats-grid">
+        <div class="stat-card">
+          <i class="fas fa-layer-group"></i>
+          <span class="stat-number">{{ decks.length }}</span>
+          <span class="stat-label">Total Decks</span>
+        </div>
+        <div class="stat-card">
+          <i class="fas fa-clone"></i>
+          <span class="stat-number">{{ allCards.length }}</span>
+          <span class="stat-label">Total Cards</span>
+        </div>
+        <div class="stat-card">
+          <i class="fas fa-brain"></i>
+          <span class="stat-number">{{ masteredCount }}</span>
+          <span class="stat-label">Mastered</span>
+        </div>
+        <div class="stat-card">
+          <i class="fas fa-fire"></i>
+          <span class="stat-number">{{ totalSessions }}</span>
+          <span class="stat-label">Study Sessions</span>
+        </div>
+      </div>
+
+      <div class="stats-breakdown" v-if="allCards.length > 0">
+        <h3>Card Difficulty Breakdown</h3>
+        <div class="breakdown-bars">
+          <div class="breakdown-item">
+            <span class="breakdown-label">New</span>
+            <div class="progress-bar">
+              <div class="progress-fill new" :style="{ width: difficultyPercent('new') + '%' }"></div>
+            </div>
+            <span>{{ difficultyCount('new') }}</span>
+          </div>
+          <div class="breakdown-item">
+            <span class="breakdown-label">Hard</span>
+            <div class="progress-bar">
+              <div class="progress-fill hard" :style="{ width: difficultyPercent('hard') + '%' }"></div>
+            </div>
+            <span>{{ difficultyCount('hard') }}</span>
+          </div>
+          <div class="breakdown-item">
+            <span class="breakdown-label">Medium</span>
+            <div class="progress-bar">
+              <div class="progress-fill medium" :style="{ width: difficultyPercent('medium') + '%' }"></div>
+            </div>
+            <span>{{ difficultyCount('medium') }}</span>
+          </div>
+          <div class="breakdown-item">
+            <span class="breakdown-label">Easy</span>
+            <div class="progress-bar">
+              <div class="progress-fill easy" :style="{ width: difficultyPercent('easy') + '%' }"></div>
+            </div>
+            <span>{{ difficultyCount('easy') }}</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ========== MODALS ========== -->
+
+  <!-- Deck Modal -->
+  <div class="modal-overlay" v-if="showDeckModal" @click.self="showDeckModal = false">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>{{ editingDeck ? 'Edit Deck' : 'New Deck' }}</h3>
+        <button class="btn-icon" @click="showDeckModal = false"><i class="fas fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Deck Name</label>
+          <input type="text" v-model="deckForm.name" placeholder="e.g. JavaScript Basics" maxlength="50" />
+        </div>
+        <div class="form-group">
+          <label>Emoji</label>
+          <div class="emoji-picker">
+            <button v-for="e in emojis" :key="e" class="emoji-btn" :class="{ selected: deckForm.emoji === e }" @click="deckForm.emoji = e">{{ e }}</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Color</label>
+          <div class="color-picker">
+            <button v-for="c in colors" :key="c" class="color-btn" :class="{ selected: deckForm.color === c }" :style="{ background: c }" @click="deckForm.color = c"></button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" @click="showDeckModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="saveDeck" :disabled="!deckForm.name.trim()">
+          {{ editingDeck ? 'Update' : 'Create' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card Modal -->
+  <div class="modal-overlay" v-if="showCardModal" @click.self="showCardModal = false">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>{{ editingCard ? 'Edit Card' : 'New Card' }}</h3>
+        <button class="btn-icon" @click="showCardModal = false"><i class="fas fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Front (Question)</label>
+          <textarea v-model="cardForm.front" placeholder="Enter question or term..." rows="3"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Back (Answer)</label>
+          <textarea v-model="cardForm.back" placeholder="Enter answer or definition..." rows="3"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" @click="showCardModal = false">Cancel</button>
+        <button class="btn btn-primary" @click="saveCard" :disabled="!cardForm.front.trim() || !cardForm.back.trim()">
+          {{ editingCard ? 'Update' : 'Add Card' }}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Modal -->
+  <div class="modal-overlay" v-if="showConfirm" @click.self="showConfirm = false">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3>Confirm</h3>
+        <button class="btn-icon" @click="showConfirm = false"><i class="fas fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <p>{{ confirmMessage }}</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" @click="showConfirm = false">Cancel</button>
+        <button class="btn btn-danger" @click="confirmAction">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notifications -->
+  <div class="toast-container">
+    <transition-group name="toast">
+      <div class="toast" v-for="toast in toasts" :key="toast.id" :class="toast.type">
+        <i :class="toast.icon"></i>
+        <span>{{ toast.message }}</span>
+      </div>
+    </transition-group>
+  </div>
+</div>
+
+<!-- Vue 3 CDN -->
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<!-- Anime.js for animations -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
